@@ -1,0 +1,14 @@
+{
+    "files.exclude": {
+        "**/*.7z": true,
+        "**/MEMORY.DMP": true
+    },
+    "files.associations": {
+        "*.log": "log"
+    },
+    "search.exclude": {
+        "**/MEMORY.DMP": true,
+        "**/*.7z": true,
+        "**/C:/symbols/**": true
+    }
+}

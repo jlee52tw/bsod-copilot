@@ -1,0 +1,63 @@
+Current dmp file path: C:\Users\yangsam1\Downloads\MEMORY_0x1CA\MEMORY.DMP
+Removing old log...
+Running batch file...
+Complete!
+
+SYNTHETIC_WATCHDOG_TIMEOUT (1ca)
+A system wide watchdog has expired. This indicates that the system
+is hung and not processing timer ticks.
+Arguments:
+Arg1: 0000000314c63aeb, The time since the watchdog was last reset, in interrupt time.
+Arg2: 00000180cca4c34d, The current interrupt time.
+Arg3: 00000180cca7d1a1, The current QPC timestamp.
+Arg4: 0000000000000003, The index of the clock processor.
+
+
+[CPU Information]
+Identifier = REG_SZ Intel64 Family 6 Model 204 Stepping 2
+ProcessorNameString = REG_SZ Intel(R) Core(TM) Ultra X7 358H
+MSR8B = REG_QWORD 11400000000
+
+
+[SMBIOS Data Tables v3.9]
+[BIOS Information (Type 0) - Length 26 - Handle 0000h]
+  Vendor                        Dell Inc.
+  BIOS Version                  89.11.2
+  BIOS Starting Address Segment 0
+  BIOS Release Date             12/24/2025
+  
+System Information File Link: file://C:\Users\yangsam1\OneDrive - Intel Corporation\Desktop\Data\Document\SW_debug tool\#747378_BSOD_Debug_Advisor\BSOD_Debug_Advisor_V2.92\log0.log
+
+PRCB Information:
+kd> !prcb
+PRCB for Processor 3 at ffffb500e2157180:
+Current IRQL -- 0
+Threads--  Current ffffa08cc0593280 Next 0000000000000000 Idle ffffa08cc0593280
+Processor Index 3 Number (0, 3) GroupSetMember 8
+Interrupt Count -- 0188f6f7
+Times -- Dpc    000032d3 Interrupt 000034e6 
+         Kernel 009fd22b User      00019332 
+
+This BSOD 0x1CA is caused by the proccessor is idle.
+
+It is most likley a HW Corruption and please do ARs as below:
+1.This BSOD 0x1CA needs update the latest BKC at First.
+2.If not help, This BSOD requires further checking and debugging by a CPU engineer.
+
+
+ # Child-SP          RetAddr           : Args to Child                                                           : Call Site
+00 fffff802`08de2c78 fffff802`76745b7e : 00000000`000001ca 00000003`14c63aeb 00000180`cca4c34d 00000180`cca7d1a1 : nt!KeBugCheckEx
+01 fffff802`08de2c80 fffff802`76754782 : 00000180`cca7d1a1 00000000`00000000 00000000`00000000 00000000`00000000 : nt!HalpWatchdogCheckPreResetNMI+0xba
+02 fffff802`08de2cc0 fffff802`767b12e2 : 00000000`000100de fffff802`767c3c26 ffffb500`e1e7f3d0 fffff802`08de2d30 : nt!HalpPreprocessNmi+0x12
+03 fffff802`08de2cf0 fffff802`768a9dc2 : 00000000`000100de fffff802`08de2ef0 00000000`00000000 fffff802`0570e100 : nt!KiProcessNMI+0x92
+04 fffff802`08de2d30 fffff802`768a9b2e : 00000000`00000000 00000000`000100de fffff802`08de2ef0 00000000`00000000 : nt!KxNmiInterrupt+0x82
+05 fffff802`08de2e70 fffff802`05cc0003 : fffff802`76552a58 fffff802`0570e180 00000000`00000000 00000000`0069783e : nt!KiNmiInterrupt+0x26e (TrapFrame @ fffff802`08de2e70)
+06 fffff802`08dba7b8 fffff802`76552a58 : fffff802`0570e180 00000000`00000000 00000000`0069783e fffff802`767b3397 : 0xfffff802`05cc0003
+07 fffff802`08dba7c0 fffff802`76783a96 : 00000000`00000000 00000000`00000000 00000000`00000000 0000017d`cfd19616 : nt!HvcallInitiateHypercall+0x68
+08 fffff802`08dba850 fffff802`23cfa18d : 00000000`000100de 00000000`00000000 ffff9643`4459286d 00000000`00000000 : nt!HvlRequestProcessorHalt+0x26
+09 fffff802`08dba880 fffff802`23cf48dd : fffff802`08dbaa20 fffff802`7662a5b3 ffff9643`4459291d fffff802`766a9e1c : intelppm!HvRequestIdle+0x2d
+0a fffff802`08dba8d0 fffff802`766e4481 : 00000000`ffffffff fffff802`00000000 ffffa08c`cad71000 fffff802`0570e180 : intelppm!PepIdleExecute+0x2d
+0b fffff802`08dba920 fffff802`76642180 : fffff802`0570e180 fffff802`0570e180 fffff802`08dbab19 fffff802`057169c0 : nt!PpmIdleExecuteTransition+0x5a9
+0c fffff802`08dbaab0 fffff802`7689ee14 : fffff802`0570e180 fffff802`0570e100 fffff802`00000001 ffffa08c`c053a000 : nt!PoIdle+0x1c0
+0d fffff802`08dbab80 00000000`00000000 : fffff802`08dbb000 fffff802`08db4000 00000000`00000000 00000000`00000000 : nt!KiIdleLoop+0x54
+

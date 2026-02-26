@@ -1,0 +1,15 @@
+# Binary dump files (too large for git)
+*.DMP
+*.dmp
+MEMORY.DMP
+
+# Compressed archives
+*.7z
+*.zip
+*.rar
+
+# Symbol cache
+C:/symbols/
+
+# VS Code workspace storage
+.vscode/.ropeproject/
