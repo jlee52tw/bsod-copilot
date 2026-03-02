@@ -40,7 +40,7 @@ If you don't already have `kd.exe` installed:
 2. During installation, select only **"Debugging Tools for Windows"**
 3. Verify installation:
    ```powershell
-   Test-Path "C:\Program Files\Windows Kits\10\Debuggers\x64\kd.exe"
+   Test-Path "C:\Program Files (x86)\Windows Kits\10\Debuggers\x64\kd.exe"
    ```
 
 ### 3. Configure Proxy (if needed)
