@@ -94,16 +94,148 @@ Correlate findings to determine:
 2. **Why it failed**: The mechanism (null pointer, pool corruption, deadlock, timeout, etc.)
 3. **Contributing factors**: System state, driver versions, hardware model
 
-### Phase 4 — Report
+### Phase 4 — Markdown Report Output
 
-Provide a structured summary:
-- **Bugcheck**: Code and symbolic name
-- **Root Cause**: One-sentence summary
-- **Faulting Component**: Driver/module name, version, publisher
-- **System Info**: OS version, hardware model, BIOS version
-- **Call Stack**: Annotated key frames from the stack trace
-- **Analysis**: Detailed explanation of the failure mechanism
-- **Recommendations**: Actionable steps (driver update, BIOS update, hardware replacement, registry fix, etc.)
+After completing the investigation, **always generate a structured Markdown report file** saved to `output/BSOD_Analysis_Report.md` next to the dump file's `output/analysis.log`. Use the `create_file` tool to write the report.
+
+The report MUST follow this template structure:
+
+```markdown
+# BSOD Analysis Report — <BUGCHECK_CODE> <BUGCHECK_NAME>
+
+**Dump File:** `<absolute_path_to_MEMORY.DMP>`
+**Analysis Date:** <YYYY-MM-DD>
+**Crash Date:** <crash_timestamp_from_vertarget>
+**Analyst:** VS Code Copilot (automated WinDbg analysis)
+
+---
+
+## Bugcheck Summary
+
+| Field | Value |
+|-------|-------|
+| **Bugcheck Code** | `<code>` — **<name>** |
+| **Description** | <description from !analyze -v> |
+| **Arg1** | `<value>` — <meaning> |
+| **Arg2** | `<value>` — <meaning> |
+| **Arg3** | `<value>` — <meaning> |
+| **Arg4** | `<value>` — <meaning> |
+| **Failure Bucket** | <bucket_id> |
+
+---
+
+## Root Cause (One-Line)
+
+**<One clear sentence describing why the system crashed.>**
+
+---
+
+## System Information
+
+| Field | Value |
+|-------|-------|
+| **Manufacturer** | <from !sysinfo smbios> |
+| **Model** | <product name> |
+| **Serial Number** | <serial> |
+| **BIOS Version** | <version> |
+| **BIOS Date** | <date> |
+
+### CPU
+| Field | Value |
+|-------|-------|
+| **Processor** | <name> |
+| **Architecture** | <family/model/stepping> |
+| **Cores / Threads** | <count> |
+| **Microcode** | <revision> |
+
+### Memory
+| Field | Value |
+|-------|-------|
+| **Total RAM** | <size> |
+| **Configuration** | <type, speed, channels> |
+
+### OS
+| Field | Value |
+|-------|-------|
+| **OS** | <version and build> |
+| **Build Lab** | <build lab string> |
+| **Hyper-V** | <enabled/disabled> |
+| **Uptime at Crash** | <duration> |
+
+---
+
+## Faulting Component
+
+| Field | Value |
+|-------|-------|
+| **Module** | `<module.sys>` (<description>) |
+| **Symbol** | `<module!Function+offset>` |
+| **Image Path** | <path> |
+| **Driver Type** | <inbox / third-party, publisher> |
+
+---
+
+## Call Stack (Annotated)
+
+<Formatted stack trace with annotations explaining each key frame>
+
+---
+
+## Detailed Analysis
+
+<Multi-paragraph explanation of what happened, step by step:>
+<1. What the system was doing>
+<2. What went wrong>
+<3. What state each processor / thread was in>
+<4. Contributing factors>
+
+---
+
+## Processor State at Crash (if relevant)
+
+| Processor | State | Activity |
+|-----------|-------|----------|
+| 0 | ... | ... |
+| ... | ... | ... |
+
+---
+
+## Notable Processes at Crash
+
+| PID | Process | Memory | Notes |
+|-----|---------|--------|-------|
+| ... | ... | ... | ... |
+
+---
+
+## Recommendations
+
+### Priority 1 — <title>
+<Details and actionable steps>
+
+### Priority 2 — <title>
+<Details and actionable steps>
+
+### Priority 3 — <title>
+<Details and actionable steps>
+
+---
+
+## Appendix — Key WinDbg Commands Used
+
+| Command | Purpose |
+|---------|---------|
+| ... | ... |
+```
+
+**Report rules:**
+- Save the report to `output/BSOD_Analysis_Report.md` in the same directory as the dump file's `output/` folder
+- Include ALL sections — omit a section only if genuinely not applicable
+- Use actual data extracted from the dump — never fabricate values
+- Annotate the call stack with plain-English explanations of what each frame does
+- Recommendations must be specific and actionable (driver versions, BIOS update URLs, registry keys, etc.)
+- The "Notable Processes" table should list the top 10-15 processes by memory commit
+- If `pwrtest.exe`, stress tools, or unusual processes are found, flag them prominently
 
 ---
 
@@ -135,8 +267,8 @@ For bugcheck codes not listed above, always start with `!analyze -v` output and 
 
 ## Important Notes
 
-- **First run may be slow**: Symbol files download from Microsoft's symbol server through the Intel proxy. Subsequent runs use the local cache at `C:\symbols`.
-- **Proxy is pre-configured**: The scripts automatically set `HTTP_PROXY`, `HTTPS_PROXY`, and `_NT_SYMBOL_PROXY` to `http://proxy-dmz.intel.com:912`.
+- **First run may be slow**: Symbol files download from Microsoft's symbol server. Subsequent runs use the local cache at `C:\symbols`.
+- **Proxy configuration**: The scripts automatically set `HTTP_PROXY`, `HTTPS_PROXY`, and `_NT_SYMBOL_PROXY` to `http://proxy-dmz.intel.com:912`. If you are NOT behind the Intel proxy, edit `tools/Invoke-KdCommand.ps1` and remove or change the `$PROXY` variable. If no proxy is needed, set `$PROXY = ""` and comment out the proxy environment variable lines.
 - **Output location**: All analysis output goes to `output/analysis.log` relative to the dump file's directory. Use `read_file` to examine results after running analysis commands.
 - **Symbol path**: `srv*C:\symbols*https://msdl.microsoft.com/download/symbols`
 - **When reading analysis output**: The output files can be very large. Read targeted sections rather than the entire file. Search for section markers like `======== FULL ANALYSIS ========` to navigate.
