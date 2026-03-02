@@ -34,30 +34,34 @@ If no `-DumpFile` is specified, it auto-discovers the first `MEMORY.DMP` in the 
 ### 3. `tools/Invoke-KdCommand.ps1` — Run arbitrary WinDbg commands
 
 ```powershell
-.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" -Commands "<windbg_commands>" [-Append]
+.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" -Commands "<windbg_commands>" [-Append] [-Reason "<why>"]
 ```
 
-Use this for targeted follow-up investigation. The `-Append` flag adds to the existing log instead of overwriting. Examples:
+Use this for targeted follow-up investigation. The `-Append` flag adds to the existing log instead of overwriting. The `-Reason` flag documents WHY the command is being run and auto-generates entries in `output/investigation_log.md`. Examples:
 
 ```powershell
-# Investigate a specific driver
-.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" -Commands "lmvm intelppm" -Append
+# Investigate a specific driver (with investigation logging)
+.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" -Commands "lmvm intelppm" -Append `
+  -Reason "!analyze -v identified intelppm.sys as faulting module — checking version and publisher"
 
 # Check all process states
-.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" -Commands "!process 0 0" -Append
+.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" -Commands "!process 0 0" -Append `
+  -Reason "Need to identify all running processes, especially stress tools that may have triggered the crash"
 
 # Examine pool allocations
-.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" -Commands "!poolused 2" -Append
+.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" -Commands "!poolused 2" -Append `
+  -Reason "Bugcheck 0x19 BAD_POOL_HEADER — examining pool usage to find the corrupting driver"
 
 # Run multiple commands
-.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" -Commands ".trap; !thread; !locks" -Append
+.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" -Commands ".trap; !thread; !locks" -Append `
+  -Reason "Switching to trap frame context to examine pre-crash register and thread state"
 ```
 
 ---
 
 ## Investigation Workflow
 
-Follow this systematic approach for every BSOD analysis:
+Follow this systematic approach for every BSOD analysis. The key principle is **iterative autonomous investigation**: after each step, read the output, identify suspicious items ("investigation leads"), and autonomously run follow-up commands to chase each lead — even if the commands are not in any predefined list. **Document every step as you go** using the `-Reason` parameter of `Invoke-KdCommand.ps1`.
 
 ### Phase 1 — Discovery & Triage
 
@@ -65,12 +69,48 @@ Follow this systematic approach for every BSOD analysis:
 2. Run `tools/Analyze-Dump.ps1` on the target dump
 3. Read the generated `output/analysis.log` file
 4. Extract key facts: bugcheck code, arguments, faulting module, OS version, system info
+5. **Identify investigation leads** — see "Investigation Lead Identification" below
 
-### Phase 2 — Deep Dive
+### Phase 2 — Iterative Deep-Dive Investigation
 
-Based on the bugcheck code and initial analysis, run targeted commands. The Bugcheck Reference Table below provides suggested starting points, but **you are encouraged to use any WinDbg command you know** that could help diagnose the issue. Use your kernel debugging expertise to determine the most effective investigation strategy for each unique crash scenario.
+This is the core of the analysis. It is a **loop**, not a single step:
 
-Common deep-dive commands (non-exhaustive — use any WinDbg command as needed):
+```
+┌──────────────────────────────────────────────────────┐
+│  Read triage output / previous step's output         │
+│           ↓                                          │
+│  Identify investigation leads (suspicious items)     │
+│           ↓                                          │
+│  Choose highest-priority lead                        │
+│           ↓                                          │
+│  Decide what WinDbg commands will investigate it     │
+│           ↓                                          │
+│  Run Invoke-KdCommand.ps1 with -Reason flag          │
+│           ↓                                          │
+│  Read results → New leads found?                     │
+│           ↓                                          │
+│  YES → loop back    NO / root cause clear → Phase 3  │
+└──────────────────────────────────────────────────────┘
+```
+
+**Rules for this phase:**
+
+1. **Always use `-Reason`** when running `Invoke-KdCommand.ps1` — explain what you saw and why you're running these commands. This auto-generates `output/investigation_log.md`.
+2. **Always use `-Append`** to preserve the full investigation trail in `analysis.log`.
+3. **Run as many iterations as needed** — there is no limit. Iterate until you have high confidence in the root cause.
+4. **Start with the Bugcheck Reference Table** commands if the bugcheck is listed, but **do not stop there**. The table is a starting point, not the full investigation.
+5. **Follow your leads** — if you see a suspicious address, driver, thread, pool tag, process, or error code in the output, investigate it with targeted commands.
+6. **Vary your approach** — if initial commands don't reveal enough, try different angles (different processor context, different thread, different memory region, etc.).
+
+**Per-iteration template:**
+```powershell
+.\tools\Invoke-KdCommand.ps1 -DumpFile "<path>" `
+  -Commands "<commands>" `
+  -Append `
+  -Reason "<what you observed> → <what you want to find out>"
+```
+
+#### Common deep-dive commands (non-exhaustive — use ANY WinDbg command):
 - `!process 0 0` — List all processes
 - `!thread <addr> 1f` — Detailed thread info with full stack
 - `.trap <addr>` — Switch to trap frame context
@@ -88,6 +128,14 @@ Common deep-dive commands (non-exhaustive — use any WinDbg command as needed):
 - `!poaction` — Power action state
 - `!timer` — Timer queue
 - `!idt` — Interrupt dispatch table
+- `!pcr <processor>` — Processor Control Region for a specific core
+- `~<proc>s; !thread; kb` — Switch processor context and examine
+- `!ipi` — Inter-processor interrupt state
+- `!defwrites` — Deferred write throttling info
+- `dd/dq <addr>` — Raw memory display
+- `dt <type> <addr>` — Display typed structure
+- `!handle 0 f` — All handles (for specific process context)
+- `!irpfind` — Search for IRPs
 
 ### Phase 3 — Root Cause Determination
 
@@ -96,7 +144,16 @@ Correlate findings to determine:
 2. **Why it failed**: The mechanism (null pointer, pool corruption, deadlock, timeout, etc.)
 3. **Contributing factors**: System state, driver versions, hardware model
 
-### Phase 4 — Markdown Report Output
+### Phase 4 — Finalize Investigation Log
+
+After establishing the root cause, update `output/investigation_log.md` with:
+- **Findings** for each step (what the command output revealed)
+- **Root cause summary** at the end
+- **Commands considered but not run** and why they were unnecessary
+
+This ensures the investigation log is a complete, self-contained record of the entire debugging process.
+
+### Phase 5 — Markdown Report Output
 
 After completing the investigation, **always generate a structured Markdown report file** saved to `output/BSOD_Analysis_Report.md` next to the dump file's `output/analysis.log`. Use the `create_file` tool to write the report.
 
@@ -267,6 +324,165 @@ For bugcheck codes not listed above, or when the listed commands are insufficien
 
 ---
 
+## Investigation Log Protocol
+
+Every analysis session must produce a self-documenting investigation trail in `output/investigation_log.md`. This file is **auto-generated** when you use the `-Reason` parameter with `Invoke-KdCommand.ps1`, but must be **enriched by the agent** with findings after each step.
+
+### How It Works
+
+1. **Before running follow-up commands**, pass `-Reason` to `Invoke-KdCommand.ps1`. This auto-creates/appends a structured entry in `output/investigation_log.md` with the step number, timestamp, reason, and commands.
+
+2. **After reading the output**, update the investigation log step with your **Findings** — what the command output revealed and what leads it opens.
+
+3. **At the end of the investigation**, add a "Root Cause Summary" section and a "Commands Not Run" section to the investigation log.
+
+### Example -Reason Strings (Be Specific)
+
+Good `-Reason` values:
+- `"!analyze -v identified ntfs.sys as faulting module with IRQL_NOT_LESS_OR_EQUAL — checking driver version, publisher, and build date"`
+- `"Stack trace shows .trap frame at 0xfffff802'12345678 — switching context to examine pre-crash register state"`
+- `"!stacks 2 shows 7/9 processors stuck in HvcallInitiateHypercall — examining timer queue to estimate hang duration"`
+- `"Pool address 0xffffca80'12345678 from Arg1 may be corrupted — checking pool header integrity and surrounding allocations"`
+- `"Process pwrtest.exe found in !vm output — investigating its thread states to determine if it triggered the crash condition"`
+
+Bad `-Reason` values (too vague):
+- `"Investigating further"`
+- `"Checking stuff"`
+- `"Follow-up"`
+
+### Investigation Log Structure
+
+The auto-generated `output/investigation_log.md` will contain:
+
+```markdown
+# BSOD Investigation Log
+
+**Dump File:** `<path>`
+**Investigation Started:** <timestamp>
+
+---
+
+## Step 1 — <timestamp>
+
+**Reason:** <why this command is being run>
+
+**Commands:**
+<windbg commands>
+
+**PowerShell Invocation:**
+<exact powershell command line>
+
+**Findings:** <added by agent after reading output>
+
+**Next Leads:** <what to investigate next>
+
+---
+
+## Step 2 — <timestamp>
+...
+
+---
+
+## Root Cause Summary
+
+<final root cause determination>
+
+## Commands Considered but Not Run
+
+| Command | Why Not Needed |
+|---------|----------------|
+| ... | ... |
+```
+
+---
+
+## Investigation Lead Identification
+
+After *every* command output, systematically scan for these categories of investigation leads:
+
+### Category 1 — Addresses & Pointers
+- **Faulting address** from bugcheck args → `!pool <addr>; !pte <addr>; dd <addr>`
+- **Trap frame / context record** addresses → `.trap <addr>; .cxr <addr>`
+- **Thread address** from `!thread` → `!thread <addr> 1f`
+- **Process address** from `!analyze -v` → `!process <addr> 1f`
+- **IRP addresses** in stack → `!irp <addr>`
+- **Device object addresses** → `!devobj <addr>`
+
+### Category 2 — Suspicious Modules & Drivers
+- **Faulting module** (`IMAGE_NAME`, `MODULE_NAME`) → `lmvm <module>`
+- **Third-party drivers** in the loaded module list → `lmvm <module>; !drvobj <driver> 7`
+- **Outdated driver timestamps** → compare with known good versions
+- **Unsigned or test-signed drivers** → investigate publisher and origin
+- **Multiple modules from same vendor** in crash path → investigate vendor's driver stack
+
+### Category 3 — System State Anomalies
+- **All processors idle / stuck** → `!running; !ready; !stacks 2`
+- **High IRQL on crash** → check what elevated IRQL (DPC? ISR? NMI?)
+- **Timer queue overdue** → `!timer` to estimate hang duration
+- **Power state transitions** → `!poaction; !powertriage`
+- **Lock contention** → `!locks; !qlocks`
+- **Memory pressure** → `!vm; !memusage; !poolused 2`
+- **Pending IRPs** → `!irpfind; !irp <addr>`
+
+### Category 4 — Process & Thread Anomalies
+- **Stress/test tools running** (pwrtest.exe, prime95, memtest, furmark, etc.) → flag as contributing factor
+- **Anti-virus with kernel drivers** → check version, investigate stack involvement
+- **System processes crashed** → `!process <addr> 1f`
+- **Thread wait states** → `!thread <addr> 1f` to see wait reason and duration
+- **Deadlocked threads** → multiple threads waiting on each other's locks
+
+### Category 5 — Hardware Indicators
+- **Machine check exceptions** → `!mce; !cpuinfo`
+- **ECC memory errors** → `!sysinfo smbios` memory module details
+- **Thermal events** → check CPU context for thermal throttling
+- **Specific CPU cores faulting** → `!pcr <id>; ~<id>s; kb`
+- **Hybrid CPU architecture** → check if P-cores vs E-cores behave differently
+
+### Autonomous Deep-Dive Decision Tree
+
+After reading triage output, apply this decision tree to choose follow-up commands:
+
+```
+Triage output read
+│
+├─ Is there a .trap or .cxr address?
+│   YES → Run .trap/.cxr to switch context, then kb, !thread, r
+│
+├─ Is there a faulting module identified?
+│   YES → Run lmvm <module> — check inbox vs third-party
+│   │     Is it third-party?
+│   │       YES → Run !drvobj <driver> 7, check version
+│   │       NO  → Focus on the function logic, not the driver itself
+│
+├─ Are there address arguments (Arg1, Arg2)?
+│   YES → Run !pool, !pte, dd on those addresses
+│
+├─ Is this a watchdog/timeout/hang (0x1CA, 0x133, 0x9F)?
+│   YES → Run !running, !ready, !stacks 2, !timer, !poaction
+│   │     Check if ALL processors are stuck
+│   │     Estimate hang duration from timer queue
+│
+├─ Is this a memory corruption (0x19, 0x1A, 0xC2, 0xC5)?
+│   YES → Run !pool, !poolval, !poolused 2, !vm, !memusage
+│
+├─ Are there suspicious processes in !vm?
+│   YES → Run !process <addr> 1f for each suspicious process
+│
+├─ Is the output unclear or root cause uncertain?
+│   YES → Try a different angle:
+│         - Switch processor context: ~1s; !thread; kb
+│         - Examine interrupt state: !idt; !ipi
+│         - Check for pending work: !dpcs; !deferredworklist
+│         - Look at raw memory: dt <struct> <addr>
+│         - Check image integrity: !chkimg <module>
+│
+└─ Root cause is clear?
+    YES → Proceed to Phase 3
+    NO  → Return to top of loop with new leads
+```
+
+---
+
 ## Important Notes
 
 - **First run may be slow**: Symbol files download from Microsoft's symbol server. Subsequent runs use the local cache at `C:\symbols`.
@@ -275,6 +491,7 @@ For bugcheck codes not listed above, or when the listed commands are insufficien
 - **Symbol path**: `srv*C:\symbols*https://msdl.microsoft.com/download/symbols`
 - **When reading analysis output**: The output files can be very large. Read targeted sections rather than the entire file. Search for section markers like `======== FULL ANALYSIS ========` to navigate.
 - **Always use `-Append` flag** when running follow-up commands via `Invoke-KdCommand.ps1` to preserve the full investigation trail.
+- **Always use `-Reason` flag** when running follow-up commands — this auto-generates the investigation log in `output/investigation_log.md` for full traceability.
 - **The `q` command is appended automatically** — do not add it to your commands.
 
 ---
@@ -318,8 +535,11 @@ The commands, patterns, and bugcheck references above are **guidelines, not cons
 
 The only hard requirements are:
 1. Use the provided PowerShell tools (`Analyze-Dump.ps1`, `Invoke-KdCommand.ps1`, `List-Dumps.ps1`) to interact with dump files
-2. Generate the structured Markdown report at the end (Phase 4)
-3. Never fabricate data — all findings must come from actual dump analysis output
+2. **Always use `-Reason`** with `Invoke-KdCommand.ps1` to document every investigation step — this builds the investigation log automatically
+3. **Iterate until confident** — run follow-up commands in a loop, reading each output and chasing leads until the root cause is clear or all leads are exhausted
+4. Generate the structured Markdown report at the end (Phase 5)
+5. Finalize the investigation log with findings, root cause summary, and commands not run (Phase 4)
+6. Never fabricate data — all findings must come from actual dump analysis output
 
 ---
 

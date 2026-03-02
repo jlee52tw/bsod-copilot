@@ -10,5 +10,6 @@
         "**/MEMORY.DMP": true,
         "**/*.7z": true,
         "**/C:/symbols/**": true
-    }
+    },
+    "python-envs.defaultEnvManager": "ms-python.python:system"
 }

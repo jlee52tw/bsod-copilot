@@ -97,6 +97,8 @@ $triageCommands = @(
 $params = @{
     DumpFile = $DumpFile
     Commands = $triageCommands
+    Reason   = "Initial triage - running curated diagnostic commands to identify bugcheck code, faulting module, system hardware, OS version, processor state, loaded drivers, and memory usage"
+    StepNumber = 1
 }
 if ($OutputFile) {
     $params["OutputFile"] = $OutputFile

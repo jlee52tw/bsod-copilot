@@ -25,11 +25,25 @@
 .PARAMETER Append
     If specified, appends to existing output file instead of overwriting.
 
+.PARAMETER Reason
+    A short description of WHY these commands are being run. When provided,
+    this is appended to the session banner in analysis.log AND a structured
+    entry is written to the investigation log (output\investigation_log.md).
+    Use this to create a self-documenting investigation trail.
+
+.PARAMETER StepNumber
+    Investigation step number. Used together with -Reason to label each
+    entry in the investigation log. If omitted, auto-increments based on
+    existing entries in the investigation log.
+
 .EXAMPLE
     .\Invoke-KdCommand.ps1 -DumpFile "C:\dumps\MEMORY.DMP" -Commands "!analyze -v; kb 100"
 
 .EXAMPLE
     .\Invoke-KdCommand.ps1 -DumpFile "C:\dumps\MEMORY.DMP" -Commands "!process 0 0" -Append
+
+.EXAMPLE
+    .\Invoke-KdCommand.ps1 -DumpFile "C:\dumps\MEMORY.DMP" -Commands "lmvm ntfs" -Append -Reason "!analyze -v identified ntfs.sys as faulting module — checking driver version and publisher" -StepNumber 3
 #>
 
 [CmdletBinding()]
@@ -47,7 +61,13 @@ param(
     [Parameter(Mandatory = $false)]
     [string]$SymbolPath = "srv*C:\symbols*https://msdl.microsoft.com/download/symbols",
 
-    [switch]$Append
+    [switch]$Append,
+
+    [Parameter(Mandatory = $false)]
+    [string]$Reason,
+
+    [Parameter(Mandatory = $false)]
+    [int]$StepNumber = 0
 )
 
 # ── Configuration ──────────────────────────────────────────────────────────────
@@ -83,14 +103,29 @@ $env:_NT_SYMBOL_PROXY     = $PROXY
 $env:NO_PROXY             = ".intel.com,intel.com,localhost,127.0.0.1"
 $env:_NT_SYMBOL_PATH      = $SymbolPath
 
+# ── Resolve investigation log path ────────────────────────────────────────────
+$investigationLogFile = Join-Path (Join-Path $dumpDir "output") "investigation_log.md"
+
+# ── Auto-increment step number if not specified ───────────────────────────────
+if ($Reason -and $StepNumber -eq 0) {
+    if (Test-Path $investigationLogFile) {
+        $existingSteps = (Select-String -Path $investigationLogFile -Pattern '^## Step \d+' -AllMatches).Count
+        $StepNumber = $existingSteps + 1
+    } else {
+        $StepNumber = 1
+    }
+}
+
 # ── Prepare banner ────────────────────────────────────────────────────────────
 $timestamp = Get-Date -Format "yyyy-MM-dd HH:mm:ss"
+$reasonLine = if ($Reason) { "`n  Reason: $Reason" } else { "" }
+$stepLine = if ($Reason) { "`n  Step: $StepNumber" } else { "" }
 $banner = @"
 
-================================================================================
+================================================================================$stepLine
   WinDbg Analysis Run — $timestamp
   Dump: $DumpFile
-  Commands: $Commands
+  Commands: $Commands$reasonLine
 ================================================================================
 
 "@
@@ -100,6 +135,48 @@ if ($Append -and (Test-Path $OutputFile)) {
     Add-Content -Path $OutputFile -Value $banner -Encoding UTF8
 } else {
     Set-Content -Path $OutputFile -Value $banner -Encoding UTF8
+}
+
+# ── Write investigation log entry ─────────────────────────────────────────────
+if ($Reason) {
+    $logEntry = @"
+
+---
+
+## Step $StepNumber — $timestamp
+
+**Reason:** $Reason
+
+**Commands:**
+``````
+$Commands
+``````
+
+**PowerShell Invocation:**
+``````powershell
+.\tools\Invoke-KdCommand.ps1 -DumpFile "$DumpFile" -Commands "$Commands" -Append -Reason "$Reason" -StepNumber $StepNumber
+``````
+
+"@
+    $logDir = Split-Path -Parent $investigationLogFile
+    if (-not (Test-Path $logDir)) {
+        New-Item -ItemType Directory -Path $logDir -Force | Out-Null
+    }
+    if (-not (Test-Path $investigationLogFile)) {
+        $header = @"
+# BSOD Investigation Log
+
+**Dump File:** ``$DumpFile``
+**Investigation Started:** $timestamp
+
+This log is auto-generated during the analysis process. Each step records
+what WinDbg commands were run, why they were chosen, and what was found.
+
+"@
+        Set-Content -Path $investigationLogFile -Value $header -Encoding UTF8
+    }
+    Add-Content -Path $investigationLogFile -Value $logEntry -Encoding UTF8
+    Write-Host "  Step $StepNumber logged to: $investigationLogFile" -ForegroundColor DarkGray
 }
 
 # ── Ensure commands end with quit ─────────────────────────────────────────────
