@@ -320,3 +320,14 @@ The only hard requirements are:
 1. Use the provided PowerShell tools (`Analyze-Dump.ps1`, `Invoke-KdCommand.ps1`, `List-Dumps.ps1`) to interact with dump files
 2. Generate the structured Markdown report at the end (Phase 4)
 3. Never fabricate data — all findings must come from actual dump analysis output
+
+---
+
+## Reference Documentation
+
+Use these Microsoft documentation links for additional context when investigating crashes:
+
+- [Debugger Commands Reference](https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/commands) — Complete list of all WinDbg/kd commands
+- [!analyze Extension](https://learn.microsoft.com/en-us/windows-hardware/drivers/debuggercmds/-analyze) — Detailed usage of the `!analyze` command
+- [Bug Check Code Reference](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/bug-check-code-reference2) — Full list of Windows bugcheck codes with descriptions and parameters
+- [Analyzing a Kernel-Mode Dump File with WinDbg](https://learn.microsoft.com/en-us/windows-hardware/drivers/debugger/analyzing-a-kernel-mode-dump-file-with-windbg) — Step-by-step guide to kernel dump analysis
